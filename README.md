@@ -137,3 +137,7 @@ Current source references checked on 2026-09-27:
 - [Merging complete sets](https://docs.polymarket.com/trading/positions/manage)
 - [Coinbase public ticker](https://docs.cdp.coinbase.com/exchange/websocket-feed/channels)
 - [Official Polymarket RTDS client and Chainlink schemas](https://github.com/Polymarket/real-time-data-client)
+
+## Automatic execution status
+
+The strategy is not yet wired to an autonomous authenticated executor. `execution.py` adds an exchange-confirmed inventory layer with no public-print fills, acknowledgement-driven reservations, exact share precision, deduplicated partial fills and late-fill accounting. Public resolution does not credit unobserved redemption cash. This layer is tested but does not itself submit orders. See `docs/implementation-audit.md` for the remaining automatic-worker requirements.
