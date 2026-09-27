@@ -12,7 +12,11 @@ def replay(path, config=None):
         meta = json.loads(next(recording))
         if meta.get("kind") != "meta" or meta.get("schema") != 1:
             raise ValueError("Expected schema=1 meta header")
-        engine = Engine(Market(**meta["market"]), config or Config(**meta["config"]))
+        engine_class = Engine
+        if meta.get("execution_mode") == "exchange_confirmed":
+            from .execution import ExecutionEngine
+            engine_class = ExecutionEngine
+        engine = engine_class(Market(**meta["market"]), config or Config(**meta["config"]))
         for line_number, line in enumerate(recording, 2):
             if line.strip():
                 try:

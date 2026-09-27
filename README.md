@@ -2,7 +2,7 @@
 
 A Python research implementation of the observable strategy described for `pspspsps5`: estimate Up probability, buy an underpriced outcome, accumulate the opposite side as the signal changes, and track complete sets separately from the directional residual.
 
-**The strategy engine is paper only.** The dashboard also provides separate, manually reviewed wallet orders through Polymarket's official SDK. It does not reproduce the original trader's private model or verify the advertised +$246,578 profit. The probability model is an untrained baseline, and positive simulated returns are not evidence of a live edge.
+**Paper mode is the default.** The dashboard supports manually reviewed orders, and a separate user-launched local session can place automatic maker orders through Polymarket's official SDK. It does not reproduce the original trader's private model or verify the advertised +$246,578 profit. The probability model is an untrained baseline, and positive simulated returns are not evidence of a live edge.
 
 ## Install and run
 
@@ -126,7 +126,7 @@ python scripts/smoke_public_feeds.py
 
 The live smoke test reads both public feeds for 42 seconds, checks both outcome snapshots, and verifies deterministic replay. It deliberately uses impossible edge thresholds so it creates zero orders; its dummy strike is **only for connectivity testing**. It needs internet access. Unit tests and the synthetic demo run offline, and GitHub Actions runs them on Python 3.11 and 3.13.
 
-Before extending this to real trading, remaining work includes the original wallet's full ledger audit, a calibrated probability model evaluated out of sample, independent reference-feed validation and verified strike automation, long-duration multi-market shadow evaluation, and an authenticated executor with exchange fill reconciliation, persistence, geoblock checks and cancel-all controls. This repository provides the paper research stage; it does not claim those live-trading stages are implemented.
+Remaining research includes the original wallet's full ledger audit, a calibrated probability model evaluated out of sample, verified strike automation and long-duration multi-market evaluation. Automatic execution is implemented for one explicitly selected market; funded authentication and real execution remain unverified. This is not evidence of a profitable live strategy.
 
 Current source references checked on 2026-09-27:
 
@@ -138,6 +138,20 @@ Current source references checked on 2026-09-27:
 - [Coinbase public ticker](https://docs.cdp.coinbase.com/exchange/websocket-feed/channels)
 - [Official Polymarket RTDS client and Chainlink schemas](https://github.com/Polymarket/real-time-data-client)
 
-## Automatic execution status
+## User-launched automatic trading
 
-The strategy is not yet wired to an autonomous authenticated executor. `execution.py` adds an exchange-confirmed inventory layer with no public-print fills, acknowledgement-driven reservations, exact share precision, deduplicated partial fills and late-fill accounting. Public resolution does not credit unobserved redemption cash. This layer is tested but does not itself submit orders. See `docs/implementation-audit.md` for the remaining automatic-worker requirements.
+Automatic mode continuously feeds the strategy from public outcome books and the market's Chainlink reference stream. TWAP 60-second markets use `crypto_prices_twap_sixty`; unsupported resolution sources fail closed. The official price to beat must be supplied explicitly; it is never guessed.
+
+Run this from your own PowerShell after replacing the two placeholders with a current market slug and its official price to beat:
+
+```powershell
+.\scripts\wallet.ps1 -Action auto -Slug "CURRENT_MARKET_SLUG" -Strike OFFICIAL_PRICE_TO_BEAT -ExpectedSigner "0x8041Cc720aBC7DA28B056439aa2932Dbb879c408" -OrderDollars 3 -MaxSpend 10 -MaxLoss 3 -Seconds 120
+```
+
+Use `-Wallet "PROFILE_TRADING_WALLET_ADDRESS"` if your funded Polymarket wallet differs from the signer. Verify it in your profile. The launcher displays the caps and requires `START`, then accepts the key in a hidden local prompt. Never send the key in chat. Existing account orders or positions in the selected market prevent startup. The account must already have funding and trading approvals configured through Polymarket.
+
+After that local launch, each strategy intent is reviewed automatically for freshness, book identity, share precision, price tick, available collateral, eligibility and limits. Buys are post-only. Only confirmed account fills change inventory. Unconfirmed fills hold new submissions; ambiguous submission failures stop the session without retrying. The bot requests cancellation of its own orders on Ctrl+C, a feed failure, a risk halt or the session deadline, and checks for late fills afterward. If cancellation or final reconciliation is incomplete, it prints the IDs or a warning to inspect Polymarket before restarting.
+
+Session journals are written under `runs/automatic-*`. Select that recording in the dashboard to see confirmed account fills and session accounting; session cash is not the entire wallet balance. Paired terminal value is not available cash or a recorded redemption. Automatic sessions stop after one market and do not bridge funds, deploy wallets, configure approvals, redeem tokens or roll over to another market.
+
+Validation includes offline SDK/controller checks and a Node-to-Python loopback integration test covering reversal hedging, partial/duplicate fills, complete sets, residual inventory and shutdown. Public-feed smoke checks disable all order creation. No funded account or real-money execution was used to validate this implementation.

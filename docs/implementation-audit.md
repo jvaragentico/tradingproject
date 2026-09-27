@@ -16,9 +16,9 @@ results of this bot. Its private model cannot be reconstructed from those figure
 | Dashboard reflecting actual recorded observations | HTTP, reconciliation and rendered controls checks | Implemented |
 | Browser/local wallet manual signing | Official SDK integration and local masked-key launcher | Implemented; funded authentication unverified |
 | Automatic execution using account fills rather than public prints | `ExecutionEngine`, partial/duplicate/late fill and cancel tests | Reconciliation layer implemented |
-| User-launched authenticated automatic executor | No operational worker wired to the reconciliation engine yet | Incomplete |
-| Startup ownership/funding/positions reconciliation | Existing manual wallet checks are insufficient for autonomous execution | Incomplete |
-| Automatic order lifecycle, ambiguous submissions and shutdown cancellation | Transport-independent controller and mocked lifecycle tests; authenticated worker still missing | Controller implemented; integration incomplete |
+| User-launched authenticated automatic executor | Python worker and Node SDK runner with offline HTTP integration test | Implemented; funded authentication unverified |
+| Startup ownership/funding/positions reconciliation | Startup collateral, open-order and market-position checks in SDK adapter | Implemented; tested with mocks |
+| Automatic order lifecycle, ambiguous submissions and shutdown cancellation | Controller, SDK adapter, worker journal and scoped shutdown cancellation | Implemented; tested with mocks |
 | Real-money execution validation | No user-money trade submitted by the agent | Unverified; user must initiate trading |
 | Strategy performance validation | Synthetic demonstration and short public-feed smoke recordings only | No live edge established |
 
@@ -28,12 +28,16 @@ fills include unique IDs, order identity, quantity, execution price and actual
 fees. Duplicate IDs cannot change their payload. Late fills after cancellation
 are counted. Public market resolution does not credit an unobserved redemption.
 
-This audit does not declare the automatic trader complete. The next engineering
-step is a user-launched authenticated worker with fresh-price gating, explicit
-capital/loss caps, account-order reconciliation and scoped shutdown cancellation.
+The user-launched worker now connects the external inventory engine to the SDK
+adapter through capability-protected loopback HTTP. Its launcher requires explicit
+local confirmation and caps. The end-to-end offline fixture exercises accepted
+orders, opposite-side accumulation, partial fills, complete sets, directional
+residuals, duplicate reconciliation and cancellation. Public TWAP/book connectivity
+was checked with all order creation disabled. No account credentials or financial
+transactions were used in these tests.
 
-`frontend/automatic-controller.js` implements sequential order submission,
-preflight signal rechecks, own-order cancellations and a hold on new submissions
-while fills await confirmation. Ambiguous submission failures halt the controller
-without retrying or marking the order rejected. It needs an authenticated
-transport and an operational worker; importing it cannot trade.
+Funded authentication, live execution, model calibration, multi-market operation
+and reliable automatic strike discovery are not established by these checks.
+Shutdown warns if final settlement or cancellations cannot be fully reconciled.
+An ambiguous submission requires the user to inspect account orders before a
+restart. Importing the controller or runner never launches a trading session.

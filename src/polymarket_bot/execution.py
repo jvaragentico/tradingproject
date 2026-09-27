@@ -19,6 +19,32 @@ class ExecutionEngine(Engine):
         self.confirmed_fills = {}
 
     def ingest(self, event):
+        if event.get("kind", "").startswith("execution_"):
+            ts = float(event["ts"])
+            if not math.isfinite(ts) or ts < self.now:
+                raise ValueError("Invalid execution update timestamp")
+            previous_time = self.now
+            self.now = ts
+            try:
+                kind = event["kind"]
+                local_id = event.get("local_id")
+                if kind == "execution_ack":
+                    self.acknowledge(local_id, event["exchange_id"])
+                elif kind == "execution_reject":
+                    self.rejected(local_id)
+                elif kind == "execution_cancel":
+                    self.canceled(local_id)
+                elif kind == "execution_fill":
+                    self.execution_fill(local_id, event["fill_id"], event["shares"], event["price"], event["fee"], event["status"])
+                elif kind == "execution_stop":
+                    self.halted = "executor_stopped"
+                    self.cancel()
+                else:
+                    raise ValueError("Unknown execution update")
+            except (ValueError, KeyError, TypeError):
+                self.now = previous_time
+                raise
+            return super().ingest(dict(kind="clock", ts=ts))
         if event.get("kind") != "resolution":
             return super().ingest(event)
         ts = float(event["ts"])

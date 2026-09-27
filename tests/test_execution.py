@@ -57,6 +57,14 @@ class ExecutionTests(unittest.TestCase):
                 self.engine.execution_fill(self.local_id,'fill-1',shares,price,fee,status)
         self.assertFalse(self.engine.portfolio.fills)
 
+    def test_rejected_update_preserves_journal_clock(self):
+        before=self.engine.now
+        with self.assertRaises(ValueError):
+            self.engine.ingest(dict(kind='execution_fill',ts=200,local_id=self.local_id,
+                                    fill_id='unacknowledged',shares='5',price='.44',fee='0',status='CONFIRMED'))
+        self.assertEqual(self.engine.now,before)
+        self.engine.ingest(dict(kind='clock',ts=before+.1))
+
     def test_late_confirmed_fill_after_cancel_is_accounted(self):
         self.engine.acknowledge(self.local_id,'exchange-1')
         self.engine.canceled(self.local_id)

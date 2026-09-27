@@ -131,14 +131,24 @@ def normalize_chainlink(message, received, symbol):
                  price=payload["value"], feed="polymarket_chainlink")]
 
 
-async def shadow(market, config, product, seconds, output, spot_feed="chainlink", stop_event=None):
+def normalize_chainlink_twap(message, ts, symbol):
+    if not isinstance(message, dict) or message.get("topic") != "crypto_prices_twap_sixty" or message.get("type") != "update":
+        return []
+    payload = message.get("payload", {})
+    if payload.get("symbol", "").lower().replace("/", "") != symbol.lower().replace("/", "") or payload.get("window_s") != 60:
+        return []
+    return [dict(kind="spot",ts=ts,source_ts=float(payload["timestamp"])/1000,
+                 price=payload["value"],feed="polymarket_chainlink_twap_60")]
+
+
+async def shadow(market, config, product, seconds, output, spot_feed="chainlink", stop_event=None, engine=None):
     from websockets.asyncio.client import connect
 
     if seconds <= 0:
         raise ValueError("seconds must be positive")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
-    engine = Engine(market, config)
+    engine = engine if engine is not None else Engine(market, config)
     header = dict(kind="meta", schema=1, market=asdict(market), config=asdict(config),
                   source="live_public", product=product, spot_feed=spot_feed, captured_at=time.time())
     errors = []
@@ -191,6 +201,10 @@ async def shadow(market, config, product, seconds, output, spot_feed="chainlink"
             spot_reader = reader(RTDS_WS, dict(action="subscribe", subscriptions=[
                 dict(topic="crypto_prices_chainlink", type="*")]),
                 lambda msg, ts: normalize_chainlink(msg, ts, symbol), "chainlink", ping_text="ping", ping_seconds=5)
+        elif spot_feed == "chainlink_twap":
+            spot_reader = reader(RTDS_WS, dict(action="subscribe", subscriptions=[
+                dict(topic="crypto_prices_twap_sixty", type="*")]),
+                lambda msg, ts: normalize_chainlink_twap(msg, ts, symbol), "chainlink_twap", ping_text="ping", ping_seconds=5)
         elif spot_feed == "coinbase":
             spot_reader = reader(COINBASE_WS, dict(type="subscribe", product_ids=[product],
                                  channels=["ticker", "heartbeat"]),

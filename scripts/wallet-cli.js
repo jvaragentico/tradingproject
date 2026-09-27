@@ -6,6 +6,7 @@ import {privateKeyToAccount} from 'viem/accounts';
 import {polygon} from 'viem/chains';
 import {isAddress} from 'viem';
 import {validateOrder} from '../frontend/wallet-policy.js';
+import {runAutomatic} from './automatic-runner.js';
 
 // Read the key only from the launcher's anonymous stdin pipe. Never log SDK errors
 // verbatim: transports and signing errors may include payload or request details.
@@ -27,17 +28,20 @@ try {
   if (options.action === 'address') {
     console.log('Address verified locally. No funds moved and no exchange request sent.');
   } else {
-    if (!['balance','orders','buy','cancel'].includes(options.action)) throw new Error('Invalid action.');
+    if (!['balance','orders','buy','cancel','auto'].includes(options.action)) throw new Error('Invalid action.');
     if (options.wallet && !isAddress(options.wallet)) throw new Error('Invalid trading wallet.');
     const json = async url => {const r=await fetch(url,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error('Service unavailable.');return r.json();};
     async function eligible() {const geo=await json('https://polymarket.com/api/geoblock');if(geo.blocked!==false)throw new Error('Trading is restricted at this location.');}
-    if (options.action === 'buy') await eligible();
+    if (['buy','auto'].includes(options.action)) await eligible();
     let review = null;
+    const signGuard = {check:null};
     const adapter=privateKey(secret,{chain:polygon});
-    const signer={...adapter,async signTypedData(payload){const signature=await adapter.signTypedData(payload);if(review)validateOrder(options,review);return signature;}};
+    const signer={...adapter,async signTypedData(payload){await signGuard.check?.();const signature=await adapter.signTypedData(payload);if(review)validateOrder(options,review);await signGuard.check?.();return signature;}};
     const client=await createSecureClient({signer,wallet:options.wallet || account.address});
     console.log('Trading wallet: '+client.account.wallet);
-    if(options.action === 'balance') {
+    if(options.action === 'auto') {
+      await runAutomatic({client,options,eligible,signGuard});
+    } else if(options.action === 'balance') {
       const b=await fetchBalanceAllowance(client,{assetType:'COLLATERAL'});
       console.log('Trading collateral base units: '+String(b.balance));
       console.log('Collateral decimals: 6. BNB Chain assets require a supported deposit.');

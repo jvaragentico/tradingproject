@@ -18,10 +18,13 @@ def main():
     market = market_from_gamma(raw, 1)
     config = Config(maker_edge=2, taker_edge=2, pair_edge=2)
     output = Path("runs") / f"live-smoke-{int(time.time())}"
-    report = asyncio.run(shadow(market, config, "BTC-USD", 42, output))
+    spot_feed = "chainlink_twap" if "twap-60s-streams" in raw.get("resolutionSource", "") else "chainlink"
+    product = market.slug.split('-')[0].upper() + "-USD"
+    report = asyncio.run(shadow(market, config, product, 42, output, spot_feed=spot_feed))
     recorded = [json.loads(line) for line in (output / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     counts = Counter(row["kind"] for row in recorded)
     assert counts["spot"] >= 3, counts
+    assert all(0 < float(row['price']) < 10000000 for row in recorded if row['kind']=='spot')
     tokens = {row["token"] for row in recorded if row["kind"] == "book"}
     assert {market.up_token, market.down_token} <= tokens, tokens
     assert report["portfolio"]["fills"] == 0
@@ -31,7 +34,7 @@ def main():
     assert replayed["portfolio"] == report["portfolio"]
     assert replayed["actions"] == report["actions"]
     summary = dict(passed=True, seconds=42, counts=dict(counts), output=str(output),
-                   market=market.slug, paper_only=True, orders_created=0,
+                   market=market.slug, spot_feed=spot_feed, paper_only=True, orders_created=0,
                    note="Connectivity and deterministic replay only; no performance inference.")
     (output / "smoke.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))

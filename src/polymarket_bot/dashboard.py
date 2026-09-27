@@ -112,7 +112,11 @@ class RunMonitor:
                     if row.get("kind") != "meta" or row.get("schema") != 1:
                         raise ValueError("Unsupported recording header")
                     self.meta = row
-                    self.engine = Engine(Market(**row["market"]), Config(**row["config"]))
+                    engine_class = Engine
+                    if row.get("execution_mode") == "exchange_confirmed":
+                        from .execution import ExecutionEngine
+                        engine_class = ExecutionEngine
+                    self.engine = engine_class(Market(**row["market"]), Config(**row["config"]))
                 else:
                     self.engine.ingest(row)
                     self.counts[row["kind"]] += 1
