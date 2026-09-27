@@ -1,0 +1,106 @@
+# Polymarket dynamic hedging shadow bot
+
+A Python research implementation of the observable strategy described for `pspspsps5`: estimate Up probability, buy an underpriced outcome, accumulate the opposite side as the signal changes, and track complete sets separately from the directional residual.
+
+**This version is paper only.** It has no private keys, signing code, real order submission, on-chain merging, or capital deposits. It does not reproduce the original trader's private model or verify the advertised +$246,578 profit. The probability model is an untrained baseline, and positive simulated returns are not evidence of a live edge.
+
+## Install and run
+
+Python 3.11 or newer:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+python -m unittest discover -s tests -v
+polybot demo --output runs/demo
+```
+
+On macOS/Linux, activate with `source .venv/bin/activate`. You can also use `python -m polymarket_bot` instead of `polybot`. Each demo/shadow output directory must be new to prevent recordings being overwritten.
+
+The demo generates a **synthetic** market with a reversal. Its fabricated quotes deliberately illustrate paired inventory and do not represent historical Polymarket performance. Partial fills mean the average executed fill size will not equal the configured $23.59 order budget.
+
+## Live shadow trading
+
+```powershell
+polybot discover --asset btc --interval 5m
+```
+
+Choose a current `btc-updown-5m-<UTC-start-seconds>` slug from the result. Read that market's **official price to beat** on Polymarket. Supply the actual value; do not substitute the latest exchange price. For example, replacing both placeholders:
+
+```powershell
+polybot shadow --slug YOUR_MARKET_SLUG --strike OFFICIAL_PRICE_TO_BEAT --seconds 300 --config config.example.json --output runs/shadow-001
+polybot replay runs/shadow-001/events.jsonl --output runs/shadow-001/replayed.json
+```
+
+BTC, ETH, SOL and XRP 5/15-minute markets are supported. Token IDs are mapped by outcome labels, not array order. The runner verifies the interval against the official expiry and loads the market-specific tick, minimum order size and fee schedule. Unknown fee metadata stops the run rather than assuming free trades. The CLI rejects nonbinary and negative-risk markets.
+
+The default runner subscribes to the public Polymarket CLOB WebSocket and Polymarket RTDS `crypto_prices_chainlink` stream. It accepts live updates for the selected asset and ignores the initial historical dump. Verify that the selected stream matches the specific market's resolution rules; freshness checks cannot eliminate delivery delays. Use `--spot-feed coinbase` to select the optional Coinbase Exchange ticker adapter. **Coinbase is a spot-price proxy, not the settlement oracle**, and basis differences can remove apparent edge. There is no automatic strike scraping or interval rollover: each new interval needs its own verified strike and new run. The prototype ends at the requested duration or observed official resolution. Expiry alone never invents a winner.
+
+Recordings and reports are written to `runs/` and ignored by Git. A disconnect halts the run and preserves its partial recording. Start a new run after checking the failure. This research runner does not claim to recover real outstanding orders across disconnects.
+
+## Strategy and execution assumptions
+
+The model estimates
+
+`P(Up) = NormalCDF((log(spot / strike) + bounded_drift * time_remaining) / (volatility * sqrt(time_remaining)))`.
+
+It uses only observations already received, a rolling volatility estimate, a volatility floor, bounded momentum drift, and a warmup period. The estimated probability sets a continuously changing target net share position. The bot quotes the underpriced side when the fair-value edge exceeds its configured threshold and uncertainty allowance; after a reversal it can buy the opposite outcome instead of selling the existing inventory. It can also quote the opposite outcome when completing the oldest unmatched lot has sufficient all-in pair edge.
+
+The reported 40% imbalance, 90% two-sided rate and 94.5-cent combined cost are **observations to investigate, not targets hard-coded into the strategy**.
+
+- Maker orders are post-only, join the displayed best bid, and become active after simulated order latency. Quotes are canceled on an invalid signal or lifetime expiry, with cancellation latency.
+- Queue ahead is the displayed size at activation. Only subsequently observed aggressive sells **at the exact quote price** can consume that queue and then partially fill our hypothetical order. Quote touches, bid deletions, cancellations ahead, and trades at another price do not create fills. Old and duplicate trade messages are rejected for matching.
+- This public-L2 queue model is deliberately conservative but still cannot prove real fills. It does not model hidden liquidity, every trade allocation, market impact or production-grade exchange reconciliation. Missed trades can undercount fills.
+- Taker execution is disabled by default. If enabled, it waits both order latency and the configured taker delay, rechecks its edge at arrival, walks displayed depth up to its limit, charges the actual market fee curve, and cancels the unfilled IOC remainder. The slippage buffer is an extra decision allowance, not fabricated cash expenditure.
+- No maker or taker rebates and no liquidity rewards are credited. Configured latency values are assumptions, not measured infrastructure performance.
+- All pending orders, including those awaiting cancellation, reserve cash and risk budget. Limits cover gross market spending, net shares, and worst-case terminal loss. Limits are per run/per market; this version does not coordinate a multi-market portfolio or a daily loss budget.
+- The market and spot feeds must both be fresh by receive and source timestamps. Crossing/empty books pause new execution. The runner stops placing orders two seconds before expiry.
+
+The default starting capital is $1,000, maximum gross spend is $250, worst-case loss cap is $50, and order budget is $23.59. These are research settings, not recommendations for funding a live account.
+
+## Complete-set and P&L accounting
+
+Fill costs include fees and are kept as decimal FIFO lots. Equal Up and Down quantities form complete sets; all matched pairs, including pairs costing more than $1, remain visible. The unmatched balance is directional exposure.
+
+`paired terminal P&L = paired shares - their all-in acquisition cost`
+
+Complete sets are valued at their terminal $1 payout. This is **not credited to available cash before resolution**, since no real or simulated merge is executed. Residual inventory is marked at the best bid for a conservative mark; this is not a depth-aware liquidation quote. `realized_pnl` stays null until an official resolution event. At resolution, paired shares plus the winning residual pay out once in the simulator. A profitable paired component can coexist with a losing overall position.
+
+## Wallet trade investigation
+
+```powershell
+polybot wallet --address 0xb0f85baa97990910a3e8ac2b4a58a322f01ecef5 --max-pages 1 --output runs/wallet.json
+polybot analyze-wallet runs/wallet.json --output runs/wallet-analysis.json
+```
+
+The address comes from the supplied brief; its identity and claimed lifetime P&L are not independently certified by the tool. Public samples are capped at 10 pages/10,000 returned rows and include maker trades (`takerOnly=false`). The API may return less. Pagination of a changing live dataset can omit rows even after deduplication.
+
+The analysis restricts statistics to supported short-term crypto markets and reports observed trade sizes, gross buy VWAP pair costs, two-sided gross purchase frequency and gross purchase imbalance. **These are sample statistics, not remaining inventory or audited P&L.** Sales, transfers, splits, merges, settlement payouts and rebates need a full on-chain ledger reconstruction before making lifetime profitability or capital-requirement claims. The output explicitly marks complete wallet history as false and audited P&L as null.
+
+## Recording format
+
+JSONL begins with `{ "kind": "meta", "schema": 1, "market": {...}, "config": {...}, "source": "..." }`. Subsequent observations have `kind` and `ts` (UTC receive time in seconds). Supported kinds are `spot`, `book`, `delta`, `trade`, `tick`, `clock`, `disconnect` and `resolution`. Feed observations also retain `source_ts`.
+
+Replay preserves receive order and rejects backward timestamps; it never sorts historical observations using future knowledge. Reports contain the configuration, action journal, actual simulated fills, queue behavior, fees, paired payoff and residual exposure. Do not describe a candle-only or synthetic replay as an HFT backtest. A useful evaluation needs timestamped order books, aggressive trades, the correct reference feed and official strikes over many independently resolved markets.
+
+## Validation and next stage
+
+```powershell
+python -m unittest discover -s tests -v
+python scripts/smoke_public_feeds.py
+```
+
+The live smoke test reads both public feeds for 42 seconds, checks both outcome snapshots, and verifies deterministic replay. It deliberately uses impossible edge thresholds so it creates zero orders; its dummy strike is **only for connectivity testing**. It needs internet access. Unit tests and the synthetic demo run offline, and GitHub Actions runs them on Python 3.11 and 3.13.
+
+Before extending this to real trading, remaining work includes the original wallet's full ledger audit, a calibrated probability model evaluated out of sample, independent reference-feed validation and verified strike automation, long-duration multi-market shadow evaluation, and an authenticated executor with exchange fill reconciliation, persistence, geoblock checks and cancel-all controls. This repository provides the paper research stage; it does not claim those live-trading stages are implemented.
+
+Current source references checked on 2026-09-27:
+
+- [Polymarket fees](https://docs.polymarket.com/trading/fees)
+- [Market fee schedule and trading parameters](https://docs.polymarket.com/market-data/market-details)
+- [Public market WebSocket and event schemas](https://docs.polymarket.com/market-data/realtime-data)
+- [Market discovery](https://docs.polymarket.com/market-data/discover-markets)
+- [Merging complete sets](https://docs.polymarket.com/trading/positions/manage)
+- [Coinbase public ticker](https://docs.cdp.coinbase.com/exchange/websocket-feed/channels)
+- [Official Polymarket RTDS client and Chainlink schemas](https://github.com/Polymarket/real-time-data-client)
