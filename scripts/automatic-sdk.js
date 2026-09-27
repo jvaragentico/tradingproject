@@ -55,20 +55,33 @@ export function createSdkExchange({client,engine,eligible,signGuard=null,readBal
       const order=await client.fetchOrder({orderId});
       if(order.id!==orderId || order.makerAddress.toLowerCase()!==wallet || order.side!=='BUY' ||
           ![state.market.up_token,state.market.down_token].includes(String(order.assetId)))throw new Error('Order ownership or asset mismatch.');
-      const results=[];
+      const unique=new Map();
       for await(const page of client.listAccountTrades({market:state.conditionId})) {
         for(const trade of page.items) {
           const matches=trade.makerOrders.filter(m=>m.orderId===orderId);
           if(matches.length>1)throw new Error('Ambiguous maker fill.');
           for(const maker of matches) {
             if(maker.makerAddress.toLowerCase()!==wallet || maker.side!=='BUY' || String(maker.assetId)!==String(order.assetId)) throw new Error('Unexpected account fill.');
-            results.push({orderId,id:trade.id+':'+trade.bucketIndex,status:trade.status.toUpperCase(),
-              shares:maker.matchedAmount,price:maker.price,fee:'0'});
+            const fill={orderId,id:trade.id+':'+trade.bucketIndex,status:trade.status.toUpperCase(),
+              shares:maker.matchedAmount,price:maker.price,fee:'0'};
+            const previous=unique.get(fill.id);
+            if(previous && (units(previous.shares)!==units(fill.shares) || units(previous.price)!==units(fill.price)))
+              throw new Error('Account fill changed across pages.');
+            // Pagination may overlap while the trade progresses to confirmation.
+            // Never count a repeated trade twice or discard a failed settlement.
+            if(!previous || fill.status==='FAILED' ||
+                (previous.status!=='FAILED' && (fill.status==='CONFIRMED' || previous.status!=='CONFIRMED')))
+              unique.set(fill.id,fill);
           }
         }
       }
+      const results=[...unique.values()];
+      // A match may arrive while the paginated trade history is being read.
+      const latest=await client.fetchOrder({orderId});
+      if(latest.id!==orderId || latest.makerAddress.toLowerCase()!==wallet || latest.side!=='BUY' ||
+          String(latest.assetId)!==String(order.assetId))throw new Error('Order identity changed during reconciliation.');
       const observed=results.filter(f=>f.status!=='FAILED').reduce((sum,f)=>sum+units(f.shares),0n);
-      if(observed<units(order.sizeMatched))results.push({orderId,id:'awaiting_account_trade',status:'PENDING'});
+      if(observed<units(latest.sizeMatched))results.push({orderId,id:'awaiting_account_trade',status:'PENDING'});
       return results;
     }
   };

@@ -8,8 +8,8 @@ results of this bot. Its private model cannot be reconstructed from those figure
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Repeated fair probability estimates from crypto prices and time to expiry | `ProbabilityModel`, source adapters, tests | Implemented baseline; calibration unproven |
-| Buy an outcome with estimated edge exceeding costs | `Engine.decide`, edge/fee/risk tests | Implemented in paper engine |
-| Accumulate the opposite outcome after a reversal | Signal reversal test | Implemented in paper engine |
+| Buy an outcome with estimated edge exceeding costs | Shared `Engine.decide`, edge/fee/risk tests and account-worker integration test | Implemented for paper and account intents |
+| Accumulate the opposite outcome after a reversal | Signal reversal and Node/Python account-worker tests | Implemented for paper and account intents |
 | Preserve initial inventory and account for complete sets | FIFO lot accounting, fee and resolution tests | Implemented |
 | Preserve a directional residual and its loss risk | Inventory/portfolio tests and dashboard | Implemented |
 | Real-time public data and causal recording/replay | Feed smoke check and dashboard/replay tests | Implemented |
@@ -41,3 +41,10 @@ and reliable automatic strike discovery are not established by these checks.
 Shutdown warns if final settlement or cancellations cannot be fully reconciled.
 An ambiguous submission requires the user to inspect account orders before a
 restart. Importing the controller or runner never launches a trading session.
+
+Account reconciliation deduplicates overlapping trade-history pages, checks for
+changed fill payloads and re-reads the order after pagination. Matches arriving
+during that read continue to hold new orders until their account trades appear.
+Regression checks cover duplicate pages, partial history, mid-read matches and
+confirmation transitions. The latest offline checks passed 45 Python tests and
+27 JavaScript tests. These checks do not verify funded live execution.

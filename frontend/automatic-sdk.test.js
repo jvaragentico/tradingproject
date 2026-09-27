@@ -22,6 +22,42 @@ test('missing matched fills return pending marker',async()=>{
  const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
  assert.equal((await exchange.fills('order'))[0].status,'PENDING');
 });
+
+test('overlapping trade pages cannot hide missing account fills',async()=>{
+ const {client}=mock();const pages=client.listAccountTrades;
+ client.listAccountTrades=async function*(){for await(const page of pages()){yield page;yield structuredClone(page);}};
+ client.fetchOrder=async()=>({id:'order',makerAddress:wallet,assetId:'up',side:'BUY',sizeMatched:'10'});
+ const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
+ const fills=await exchange.fills('order');
+ assert.equal(fills.filter(f=>f.status==='CONFIRMED').length,1);
+ assert.equal(fills.at(-1).status,'PENDING');
+});
+
+test('a match arriving during history pagination holds new submissions',async()=>{
+ const {client}=mock();let reads=0;
+ client.fetchOrder=async()=>({id:'order',makerAddress:wallet,assetId:'up',side:'BUY',sizeMatched:++reads===1?'5':'8'});
+ const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
+ assert.equal((await exchange.fills('order')).at(-1).status,'PENDING');
+});
+
+test('changed payload across overlapping pages is rejected',async()=>{
+ const {client}=mock();const pages=client.listAccountTrades;
+ client.listAccountTrades=async function*(){for await(const page of pages()){
+   yield page;const changed=structuredClone(page);changed.items[0].makerOrders[0].matchedAmount='4';yield changed;
+ }};
+ const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
+ await assert.rejects(exchange.fills('order'),/changed across pages/);
+});
+
+test('duplicate trade confirmation advances status without double counting',async()=>{
+ const {client}=mock();const pages=client.listAccountTrades;
+ client.listAccountTrades=async function*(){for await(const page of pages()){
+   const pending=structuredClone(page);pending.items[0].status='MINED';yield pending;yield page;
+ }};
+ const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
+ assert.equal((await exchange.fills('order')).length,1);
+ assert.equal((await exchange.fills('order'))[0].status,'CONFIRMED');
+});
 test('ownership mismatch stops reconciliation',async()=>{
  const {client}=mock();client.fetchOrder=async()=>({id:'order',makerAddress:'other',side:'BUY'});
  const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
