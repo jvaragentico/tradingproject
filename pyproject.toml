@@ -14,3 +14,6 @@ polybot = "polymarket_bot.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+polymarket_bot = ["web/*.html", "web/*.css", "web/*.js"]

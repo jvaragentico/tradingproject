@@ -131,7 +131,7 @@ def normalize_chainlink(message, received, symbol):
                  price=payload["value"], feed="polymarket_chainlink")]
 
 
-async def shadow(market, config, product, seconds, output, spot_feed="chainlink"):
+async def shadow(market, config, product, seconds, output, spot_feed="chainlink", stop_event=None):
     from websockets.asyncio.client import connect
 
     if seconds <= 0:
@@ -204,7 +204,7 @@ async def shadow(market, config, product, seconds, output, spot_feed="chainlink"
             asyncio.create_task(spot_reader),
         ]
         try:
-            while time.monotonic() < deadline and not errors:
+            while time.monotonic() < deadline and not errors and not (stop_event and stop_event.is_set()):
                 await asyncio.sleep(min(.25, max(0, deadline - time.monotonic())))
                 emit(dict(kind="clock", ts=time.time()))
                 if time.monotonic() > deadline - seconds + 15 and (
@@ -218,7 +218,7 @@ async def shadow(market, config, product, seconds, output, spot_feed="chainlink"
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             emit(dict(kind="clock", ts=time.time()))
-            if not errors and (not engine.model.samples or not all(b.initialized for b in engine.books.values())):
+            if not errors and not (stop_event and stop_event.is_set()) and (not engine.model.samples or not all(b.initialized for b in engine.books.values())):
                 errors.append("Missing spot or outcome snapshots; run is not a valid shadow evaluation")
             report = engine.report()
             report["feed_errors"] = errors

@@ -46,6 +46,9 @@ def main(argv=None):
     analyze_parser = commands.add_parser("analyze-wallet", help="Analyze an existing trade sample")
     analyze_parser.add_argument("sample")
     analyze_parser.add_argument("--output")
+    dashboard_parser = commands.add_parser("dashboard", help="Open the local trading dashboard")
+    dashboard_parser.add_argument("--port", type=int, default=8787)
+    dashboard_parser.add_argument("--runs", default="runs")
     args = parser.parse_args(argv)
     try:
         if args.command == "demo":
@@ -69,6 +72,9 @@ def main(argv=None):
             save_report(analyze_trades(data), str(Path(args.output).with_suffix(".analysis.json")))
         elif args.command == "analyze-wallet":
             save_report(analyze_trades(json.loads(Path(args.sample).read_text(encoding="utf-8"))), args.output)
+        elif args.command == "dashboard":
+            from .dashboard import serve
+            serve(args.runs, args.port)
     except (ValueError, KeyError, OSError, RuntimeError) as error:
         parser.exit(1, f"Error: {error}\n")
     except KeyboardInterrupt:

@@ -2,7 +2,7 @@
 
 A Python research implementation of the observable strategy described for `pspspsps5`: estimate Up probability, buy an underpriced outcome, accumulate the opposite side as the signal changes, and track complete sets separately from the directional residual.
 
-**This version is paper only.** It has no private keys, signing code, real order submission, on-chain merging, or capital deposits. It does not reproduce the original trader's private model or verify the advertised +$246,578 profit. The probability model is an untrained baseline, and positive simulated returns are not evidence of a live edge.
+**The strategy engine is paper only.** The dashboard also provides separate, manually reviewed wallet orders through Polymarket's official SDK. It does not reproduce the original trader's private model or verify the advertised +$246,578 profit. The probability model is an untrained baseline, and positive simulated returns are not evidence of a live edge.
 
 ## Install and run
 
@@ -17,6 +17,39 @@ polybot demo --output runs/demo
 ```
 
 On macOS/Linux, activate with `source .venv/bin/activate`. You can also use `python -m polymarket_bot` instead of `polybot`. Each demo/shadow output directory must be new to prevent recordings being overwritten.
+
+## Dashboard and wallets
+
+Run `polybot dashboard` and open http://127.0.0.1:8787/. The dashboard starts with a visibly labeled synthetic demo. Select public recordings or start a shadow capture with a current market slug and its official price to beat. Charts, inventory, simulated P&L, book depth and the fill ledger come from causal replay of the selected recording. The execution map is schematic. Export downloads that run's report.
+
+For MetaMask, open the local URL in your normal extension-enabled browser. Some embedded browsers do not provide MetaMask or BroadcastChannel. Connect the signer, switch to Polygon and reconnect after account/network changes. Set the trading wallet address from your Polymarket profile when it differs from the signer. Use an existing funded account with its trading approvals configured through Polymarket. No deployment, token approval, bridging or private-key export runs automatically.
+
+Real orders require a review checkbox and wallet signature, use post-only GTC BUY limits, and are capped at $23.59 each. The integration checks current market identity, expiration, tick, minimum size, collateral and eligibility. Prices are revalidated after signing; delayed signatures can expire. Open orders and cancel actions query the actual authenticated exchange. Disconnecting does not cancel resting orders. The paper strategy does not autonomously submit wallet trades.
+
+The funding panel loads currently supported BNB Chain assets and requests a quote to Polygon pUSD collateral, showing destination, estimated output and fees. Quotes do not move funds. Complete the deposit through Polymarket after reviewing the quote and destination. A signer address may differ from the Polymarket trading wallet. Current funding documentation: https://docs.polymarket.com/trading/bridge/deposit.
+
+### Masked PowerShell private-key alternative
+
+Install the pinned Node dependencies with `npm ci` (Node 24+). Run the following from this project in your own PowerShell terminal:
+
+```powershell
+.\scripts\wallet.ps1
+```
+
+The default action derives the public address locally and exits. `Read-Host -AsSecureString` masks input; an anonymous stdin pipe carries the key to the local Node signer. No key is placed in argv, environment variables, browser storage, project files or logs. The key still exists temporarily in the signing process's memory. Do not paste it into chat.
+
+Optional `-ExpectedSigner 0x...` fails if the entered key belongs to another address. Other commands, which each prompt for the key again:
+
+```powershell
+.\scripts\wallet.ps1 -Action balance -Wallet 0xYourPolymarketTradingWallet
+.\scripts\wallet.ps1 -Action orders -Wallet 0xYourPolymarketTradingWallet
+.\scripts\wallet.ps1 -Action buy -Wallet 0xYourPolymarketTradingWallet -Slug btc-updown-5m-CURRENT_TIMESTAMP -Outcome Up -Price 0.45 -Size 5
+.\scripts\wallet.ps1 -Action cancel -Wallet 0xYourPolymarketTradingWallet -OrderId YOUR_ORDER_ID
+```
+
+Replace placeholders. `buy` requires typing BUY after its public order review, the running local dashboard for market checks, sufficient funded collateral, and an eligible location. The key does not bridge BNB Chain funds automatically. CLI errors are redacted to avoid revealing signing payloads. Actual funded authentication, bridging and execution require user-held credentials and have not been tested with user money.
+
+Rebuild the bundled browser wallet module after edits with `npm run build`; run its guards with `npm test`. The generated bundle is included for Python installs.
 
 The demo generates a **synthetic** market with a reversal. Its fabricated quotes deliberately illustrate paired inventory and do not represent historical Polymarket performance. Partial fills mean the average executed fill size will not equal the configured $23.59 order budget.
 
