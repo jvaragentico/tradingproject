@@ -1,0 +1,23 @@
+{
+  "capital": 1000,
+  "order_dollars": 23.59,
+  "max_market_spend": 250,
+  "max_net_shares": 100,
+  "max_loss": 50,
+  "maker_edge": 0.025,
+  "taker_edge": 0.07,
+  "allow_taker": false,
+  "pair_edge": 0.01,
+  "uncertainty_buffer": 0.01,
+  "slippage_buffer": 0.005,
+  "order_latency": 0.25,
+  "cancel_latency": 0.25,
+  "taker_delay": 0.25,
+  "quote_lifetime": 3,
+  "decision_interval": 0.25,
+  "max_feed_age": 5,
+  "warmup_seconds": 30,
+  "model_window": 120,
+  "volatility_floor": 0.00005,
+  "momentum_weight": 0.15
+}

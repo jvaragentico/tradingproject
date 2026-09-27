@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polymarket-shadow-bot"
+version = "0.1.0"
+description = "Maker-first dynamic hedging research bot for Polymarket crypto Up/Down markets"
+requires-python = ">=3.11"
+dependencies = ["websockets>=15.0.1,<17"]
+
+[project.scripts]
+polybot = "polymarket_bot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
