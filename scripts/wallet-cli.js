@@ -7,6 +7,7 @@ import {polygon} from 'viem/chains';
 import {isAddress} from 'viem';
 import {validateOrder} from '../frontend/wallet-policy.js';
 import {runAutomatic} from './automatic-runner.js';
+import {resolveAccountWallet} from './account-wallet.js';
 
 // Read the key only from the launcher's anonymous stdin pipe. Never log SDK errors
 // verbatim: transports and signing errors may include payload or request details.
@@ -39,15 +40,21 @@ try {
     const adapter=privateKey(secret,{chain:polygon});
     const signer={...adapter,async signTypedData(payload){await signGuard.check?.();const signature=await adapter.signTypedData(payload);if(review)validateOrder(options,review);await signGuard.check?.();return signature;}};
     stage='exchange client setup';
-    const client=await createSecureClient({signer,wallet:options.wallet || account.address});
+    // A Polymarket account wallet may differ from its MetaMask signer. The
+    // public profile identifies the funder; SDK derivation covers new accounts.
+    const accountWallet=await resolveAccountWallet(account.address,options.wallet);
+    const client=await createSecureClient(accountWallet ? {signer,wallet:accountWallet} : {signer});
     console.log('Trading wallet: '+client.account.wallet);
+    console.log('Trading wallet type: '+client.account.walletType);
     if(options.action === 'auto') {
       stage='automatic session startup or execution';
       await runAutomatic({client,options,eligible,signGuard});
     } else if(options.action === 'balance') {
       const b=await fetchBalanceAllowance(client,{assetType:'COLLATERAL'});
       console.log('Trading collateral base units: '+String(b.balance));
-      console.log('Collateral decimals: 6. BNB Chain assets require a supported deposit.');
+      console.log('Trading collateral USD: $'+(Number(b.balance)/1000000).toFixed(2));
+      console.log('Collateral decimals: 6.');
+      if(BigInt(b.balance)===0n)console.log('No trading collateral at this wallet. Compare the trading wallet above with the account wallet in the Polymarket profile menu. Do not deposit again until they match.');
     } else if(options.action === 'orders') {
       for await(const page of client.listOpenOrders()) for(const o of page.items) console.log(JSON.stringify({id:o.id,side:o.side,price:o.price,status:o.status}));
     } else if(options.action === 'cancel') {
@@ -69,6 +76,7 @@ try {
   // Intentionally redact exception details; never echo invalid key input.
   console.error('Wallet action failed during '+stage+'. Check key format, account wallet, funding, eligibility, market inputs and network connection.');
   const publicErrors=new Set(['Signer mismatch.','Trading is restricted at this location.',
+    'Requested wallet differs from the Polymarket account wallet for this signer.',
     'Account value is at or below the stop floor.','Session capital exceeds available collateral.',
     'Existing orders must be reconciled before starting.','Existing market inventory must be reconciled before starting.']);
   if(publicErrors.has(error?.message))console.error(error.message);

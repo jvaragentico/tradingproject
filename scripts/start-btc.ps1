@@ -1,4 +1,4 @@
-param([switch]$CheckOnly)
+param([switch]$CheckOnly,[string]$Wallet = '')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskPython = Join-Path $taskRoot '.venv\Scripts\python.exe'
@@ -13,7 +13,7 @@ try {
     Write-Host "Polymarket opening reference: $($taskMarket.strike)"
     Write-Host 'Test session: maximum $3 spend and $3 market loss; $50 account-value floor; 90 seconds.'
     if ($CheckOnly) { Write-Host 'Read-only check complete. No wallet opened or orders placed.'; return }
-    & (Join-Path $PSScriptRoot 'wallet.ps1') -Action auto -Slug $taskMarket.slug -Strike ([double]$taskMarket.strike) -Seconds 90 -OrderDollars 3 -MaxSpend 3 -MaxLoss 3 -StopFloor 50 -StartAfterKey
+    & (Join-Path $PSScriptRoot 'wallet.ps1') -Action auto -Wallet $Wallet -Slug $taskMarket.slug -Strike ([double]$taskMarket.strike) -Seconds 90 -OrderDollars 3 -MaxSpend 3 -MaxLoss 3 -StopFloor 50 -StartAfterKey
     if ($LASTEXITCODE -ne 0) { throw 'Trading session failed. Check the account before retrying.' }
 } finally {
     Pop-Location

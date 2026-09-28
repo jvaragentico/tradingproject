@@ -4,7 +4,7 @@
     "type":  "module",
     "scripts":  {
                     "build":  "esbuild frontend/wallet.js --bundle --format=esm --platform=browser --outfile=src/polymarket_bot/web/wallet.js --minify",
-                    "test":  "node --test --test-isolation=none frontend/*.test.js"
+                    "test":  "node --test --test-isolation=none frontend/*.test.js tests/*.test.js"
                 },
     "dependencies":  {
                          "@polymarket/client":  "0.11.0",

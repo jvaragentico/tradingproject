@@ -38,13 +38,13 @@ Install the pinned Node dependencies with `npm ci` (Node 24+). Run the following
 
 The default action derives the public address locally and exits. `Read-Host -AsSecureString` masks input; an anonymous stdin pipe carries the key to the local Node signer. No key is placed in argv, environment variables, browser storage, project files or logs. The key still exists temporarily in the signing process's memory. Do not paste it into chat.
 
-Optional `-ExpectedSigner 0x...` fails if the entered key belongs to another address. Other commands, which each prompt for the key again:
+Optional `-ExpectedSigner 0x...` fails if the entered key belongs to another address. The balance and trading commands resolve the account wallet from Polymarket's public profile for the signer; this may be different from the MetaMask address. An explicit `-Wallet` is optional and must match the profile wallet when one exists. Commands prompt for the key again:
 
 ```powershell
-.\scripts\wallet.ps1 -Action balance -Wallet 0xYourPolymarketTradingWallet
-.\scripts\wallet.ps1 -Action orders -Wallet 0xYourPolymarketTradingWallet
-.\scripts\wallet.ps1 -Action buy -Wallet 0xYourPolymarketTradingWallet -Slug btc-updown-5m-CURRENT_TIMESTAMP -Outcome Up -Price 0.45 -Size 5
-.\scripts\wallet.ps1 -Action cancel -Wallet 0xYourPolymarketTradingWallet -OrderId YOUR_ORDER_ID
+.\scripts\wallet.ps1 -Action balance
+.\scripts\wallet.ps1 -Action orders
+.\scripts\wallet.ps1 -Action buy -Slug btc-updown-5m-CURRENT_TIMESTAMP -Outcome Up -Price 0.45 -Size 5
+.\scripts\wallet.ps1 -Action cancel -OrderId YOUR_ORDER_ID
 ```
 
 Replace placeholders. `buy` requires typing BUY after its public order review, the running local dashboard for market checks, sufficient funded collateral, and an eligible location. The key does not bridge BNB Chain funds automatically. CLI errors are redacted to avoid revealing signing payloads. Actual funded authentication, bridging and execution require user-held credentials and have not been tested with user money.
@@ -159,7 +159,7 @@ Run this from your own PowerShell after replacing the two placeholders with a cu
 .\scripts\wallet.ps1 -Action auto -Slug "btc-updown-5m-CURRENT_START_TIMESTAMP" -Strike OFFICIAL_PRICE_TO_BEAT -ExpectedSigner "0x8041Cc720aBC7DA28B056439aa2932Dbb879c408" -OrderDollars 3 -MaxSpend 10 -MaxLoss 3 -StopFloor 50 -Seconds 120
 ```
 
-Use `-Wallet "PROFILE_TRADING_WALLET_ADDRESS"` if your funded Polymarket wallet differs from the signer. Verify it in your profile. The launcher displays the caps and requires `START`, then accepts the key in a hidden local prompt. Never send the key in chat. Existing account orders or positions in the selected market prevent startup. The account must already have funding and trading approvals configured through Polymarket.
+The launcher resolves the funded account wallet through Polymarket's public profile. You can pass `-Wallet "PROFILE_TRADING_WALLET_ADDRESS"` only when it matches that profile. The launcher displays the caps and requires `START`, then accepts the key in a hidden local prompt. Never send the key in chat. Existing account orders or positions in the selected market prevent startup. The account must already have funding and trading approvals configured through Polymarket.
 
 After that local launch, each strategy intent is reviewed automatically for freshness, book identity, share precision, price tick, available collateral, eligibility and limits. Buys are post-only. Only confirmed account fills change inventory. Unconfirmed fills hold new submissions; ambiguous submission failures stop the session without retrying. The bot requests cancellation of its own orders on Ctrl+C, a feed failure, a risk halt or the session deadline, and checks for late fills afterward. If cancellation or final reconciliation is incomplete, it prints the IDs or a warning to inspect Polymarket before restarting.
 
