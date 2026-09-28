@@ -17,7 +17,7 @@ class FixedModel:
 
 
 now = time.time()
-session = Session(Market('btc-updown-5m-fixture', 'up', 'down', 100, now-100, now+200),
+session = Session(Market('btc-updown-5m-0', 'up', 'down', 100, now-100, now+200),
                   Config(capital=10, max_market_spend=10, max_loss=10,
                          order_dollars=3, max_net_shares=20, quote_lifetime=60,
                          decision_interval=.001, max_feed_age=30), Path(sys.argv[1]), 'condition')

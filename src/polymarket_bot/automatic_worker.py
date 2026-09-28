@@ -126,6 +126,8 @@ def main():
     options=json.loads(sys.stdin.readline())
     raw=get_json(f"{GAMMA}/markets/slug/{options['slug']}")
     market=market_from_gamma(raw,float(options['strike']))
+    if not market.slug.startswith('btc-updown-5m-'):
+        raise ValueError('Automatic trading supports BTC Up/Down 5m only')
     source=urlparse(raw.get('resolutionSource',''))
     asset=market.slug.split('-')[0]
     if source.scheme!='https' or source.hostname!='data.chain.link':

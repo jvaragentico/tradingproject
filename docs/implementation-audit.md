@@ -38,6 +38,15 @@ transactions were used in these tests.
 
 Funded authentication, live execution, model calibration, multi-market operation
 and reliable automatic strike discovery are not established by these checks.
+The user-requested $50 stop floor uses trading-wallet collateral plus SDK-marked
+position value, and never treats a $100 portfolio value as a stop. BTC-only
+checks run in the launcher, worker and SDK adapter. The floor is checked at
+startup, before orders and during the session. A floor breach cancels session
+orders and attempts bounded FOK sales of confirmed session BTC inventory.
+Sales have a separate execution log because the buy-only strategy journal does
+not model dispositions. Liquidity, API outages and price gaps mean $50 cannot
+be guaranteed. Multi-market continuation and automatic resolved redemption
+remain unimplemented; a new market needs its verified opening reference price.
 Shutdown warns if final settlement or cancellations cannot be fully reconciled.
 An ambiguous submission requires the user to inspect account orders before a
 restart. Importing the controller or runner never launches a trading session.
@@ -47,4 +56,4 @@ changed fill payloads and re-reads the order after pagination. Matches arriving
 during that read continue to hold new orders until their account trades appear.
 Regression checks cover duplicate pages, partial history, mid-read matches and
 confirmation transitions. The latest offline checks passed 45 Python tests and
-27 JavaScript tests. These checks do not verify funded live execution.
+33 JavaScript tests. These checks do not verify funded live execution.

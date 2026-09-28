@@ -32,16 +32,16 @@ test('controller and Python worker reconcile reversals, partial fills and shutdo
    rejected:local_id=>update({kind:'execution_reject',local_id}),canceled:local_id=>update({kind:'execution_cancel',local_id}),
    fill:(local_id,f)=>update({kind:'execution_fill',local_id,fill_id:f.id,shares:f.shares,price:f.price,fee:f.fee,status:f.status})};
   const wallet='0x1111111111111111111111111111111111111111',orders=new Map();
-  const client={account:{wallet},listOpenOrders:async function*(){yield {items:[]};},listPositions:async function*(){yield {items:[]};},
+  const client={account:{wallet},fetchPortfolioValue:async()=>({wallet,value:'0'}),listOpenOrders:async function*(){yield {items:[]};},listPositions:async function*(){yield {items:[]};},
    fetchOrderBook:async({tokenId})=>({assetId:tokenId,conditionId:'condition',negRisk:false,tickSize:'0.01',minOrderSize:'5'}),
    placeLimitOrder:async o=>{assert.equal(o.postOnly,true);assert.equal(o.side,'BUY');const id='order-'+orders.size;
     orders.set(id,{id,makerAddress:wallet,assetId:o.tokenId,side:'BUY',originalSize:o.size,sizeMatched:'0',status:'LIVE',price:o.price});return {ok:true,orderId:id};},
    cancelOrder:async({orderId})=>{orders.get(orderId).status='CANCELED';return {canceled:[orderId]};},
    fetchOrder:async({orderId})=>orders.get(orderId),
    listAccountTrades:async function*(){yield {items:[...orders.values()].filter(o=>Number(o.sizeMatched)>0).map(o=>({
-    id:'fill-'+o.id,bucketIndex:0,status:'CONFIRMED',makerOrders:[{orderId:o.id,makerAddress:wallet,assetId:o.assetId,
-     side:'BUY',matchedAmount:o.sizeMatched,price:o.price}]}))};}};
-  const exchange=createSdkExchange({client,engine,eligible:async()=>{},readBalance:async()=>({balance:10000000n})});
+    id:'fill-'+o.id,conditionId:'condition',bucketIndex:0,status:'TRADE_STATUS_CONFIRMED',makerOrders:[{orderId:o.id,makerAddress:wallet,assetId:o.assetId,
+     side:'BUY',matchedAmount:o.sizeMatched,price:o.price,feeRateBps:'0'}]}))};}};
+  const exchange=createSdkExchange({client,engine,eligible:async()=>{},readBalance:async()=>({balance:10000000n}),stopFloor:'1'});
   await exchange.startup(await engine.state());
   const controller=new AutomaticController({engine,exchange});
   await controller.step();assert.equal(controller.halted,null);assert.equal(orders.size,1);
