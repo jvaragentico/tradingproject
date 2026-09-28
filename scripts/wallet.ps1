@@ -12,7 +12,8 @@ param(
     [double]$OrderDollars = 3,
     [double]$MaxSpend = 10,
     [double]$MaxLoss = 3,
-    [double]$StopFloor = 50
+    [double]$StopFloor = 50,
+    [switch]$StartAfterKey
 )
 $ErrorActionPreference = 'Stop'
 $taskNode = (Get-Command node -ErrorAction Stop).Source
@@ -22,7 +23,7 @@ if ($Action -eq 'auto') {
     if ($Strike -le 0 -or $Slug -notmatch '^btc-updown-5m-\d+$' -or $Seconds -lt 5 -or $Seconds -gt 900 -or $MaxLoss -le 0 -or $MaxLoss -gt $MaxSpend -or $OrderDollars -le 0 -or $OrderDollars -gt [Math]::Min(23.59,$MaxSpend) -or $StopFloor -le 0) { throw 'Provide a current BTC 5m market, official strike and valid caps.' }
     Write-Host "AUTOMATIC REAL ORDERS in $Slug. Strike: $Strike. Duration: $Seconds seconds. Per-order cap: $OrderDollars. Session spend cap: $MaxSpend. Market loss cap: $MaxLoss. Account stop floor: $StopFloor."
     Write-Host 'Maker-only. Do not manually trade this market during the session. No automatic bridge or redemption.'
-    if ((Read-Host 'Type START to launch these automatic real-money orders') -cne 'START') { throw 'Automatic session canceled.' }
+    if (-not $StartAfterKey -and (Read-Host 'Type START to launch these automatic real-money orders') -cne 'START') { throw 'Automatic session canceled.' }
     $taskOptions.confirmed = $true
     $taskOptions.strike = $Strike
     $taskOptions.seconds = $Seconds

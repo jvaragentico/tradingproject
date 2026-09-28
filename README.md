@@ -140,7 +140,16 @@ Current source references checked on 2026-09-27:
 
 ## User-launched automatic trading
 
-Automatic mode continuously feeds the strategy from public outcome books and the market's Chainlink reference stream. TWAP 60-second markets use `crypto_prices_twap_sixty`; unsupported resolution sources fail closed. The official price to beat must be supplied explicitly; it is never guessed.
+Automatic mode continuously feeds the strategy from public outcome books and the market's Chainlink reference stream. TWAP 60-second markets use `crypto_prices_twap_sixty`; unsupported resolution sources fail closed. The opening reference comes from the exact live Polymarket market interval or must be supplied explicitly; it is never substituted with a spot-price guess.
+
+For a first, capped BTC 5-minute session, use the one-command PowerShell launcher. It discovers the current market, verifies its TWAP resolution metadata, reads Polymarket's live `openPrice` for that exact interval twice, and stops if either reading is missing, stale or inconsistent. `-CheckOnly` is read-only and needs no wallet. The live run prompts once for the private key locally and signs only through the existing wallet runner; do not paste the key into chat or a command line. The dashboard and browser-wallet connection are not required for this launcher.
+
+```powershell
+.\scripts\start-btc.ps1 -CheckOnly
+.\scripts\start-btc.ps1
+```
+
+The live test session caps total market spend and loss at $3, uses the $50 account-value floor, and stops after 90 seconds or market expiry. It may place **zero** orders if the strategy finds no acceptable signal. It does not make a forced test bet. The opening-price endpoint is part of Polymarket's public site rather than a documented trading API; if its response changes or is unavailable, the launcher refuses to trade. The launcher runs one market, not a continuous sequence.
 
 Run this from your own PowerShell after replacing the two placeholders with a current market slug and its official price to beat:
 
