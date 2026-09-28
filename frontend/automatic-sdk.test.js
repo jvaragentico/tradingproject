@@ -152,3 +152,23 @@ test('stop-floor exit refuses inventory not attributable to this session',async(
  const exitState=structuredClone(state);exitState.portfolio={paired_shares:'0',residual_up:'5',residual_down:'0'};
  await assert.rejects(exchange.liquidateOwnPositions(exitState),/exceeds this session/);
 });
+
+test('take-profit sells only confirmed single-side BTC inventory above cost and fee buffer',async()=>{
+ const {client}=mock();const sells=[];let quote=.45;
+ client.listPositions=async function*(){yield {items:[{wallet,conditionId:'condition',assetId:'up',currentSize:'10'}]};};
+ client.estimateMarketPrice=async()=>quote;
+ client.placeMarketOrder=async request=>{sells.push(request);return {ok:true,orderId:'exit',status:'matched',tradeIds:['trade']};};
+ client.waitForOrderFillSettlement=async()=>['0xsettled'];
+ client.fetchOrder=async()=>({id:'exit',makerAddress:wallet,assetId:'up',side:'SELL',sizeMatched:'10'});
+ const exchange=createSdkExchange({client,engine:{state:async()=>state},eligible:async()=>{}});
+ const held=structuredClone(state);held.portfolio={paired_shares:'0',residual_up:'10',residual_down:'0',total_cost:'4.00'};
+ assert.equal(await exchange.profitOpportunity(held),false);
+ assert.deepEqual(await exchange.liquidateOwnPositions(held,async()=>{},true),[]);
+ quote=.55;
+ assert.equal(await exchange.profitOpportunity(held),true);
+ const exits=await exchange.liquidateOwnPositions(held,async()=>{},true);
+ assert.equal(exits.length,1);assert.equal(exits[0].confirmed,true);
+ assert.equal(sells.length,1);assert.equal(sells[0].minPrice,.55);
+ held.portfolio.paired_shares='1';
+ assert.equal(await exchange.profitOpportunity(held),false);
+});

@@ -221,7 +221,7 @@ async def shadow(market, config, product, seconds, output, spot_feed="chainlink"
             while time.monotonic() < deadline and not errors and not (stop_event and stop_event.is_set()):
                 await asyncio.sleep(min(.25, max(0, deadline - time.monotonic())))
                 emit(dict(kind="clock", ts=time.time()))
-                if time.monotonic() > deadline - seconds + 15 and (
+                if not errors and time.monotonic() > deadline - seconds + 15 and (
                         not engine.model.samples or not all(b.initialized for b in engine.books.values())):
                     errors.append("Feed startup timed out: missing spot or outcome snapshots")
                     emit(dict(kind="disconnect", ts=time.time(), feed="startup", error=errors[-1]))

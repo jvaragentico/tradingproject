@@ -15,6 +15,28 @@ export function createSdkExchange({client,engine,eligible,signGuard=null,readBal
     if(cashUnits<0n)throw new Error('Invalid account collateral.');
     return {cashUnits,positionUnits,totalUnits:cashUnits+positionUnits};
   }
+  function profitableExit(state,shares,price) {
+    if(!Number.isFinite(price) || price<=0 || price>=1 || !state.portfolio || units(state.portfolio.paired_shares)!==0n)return false;
+    const cost=units(state.portfolio.total_cost);
+    if(cost<=0n)return false;
+    const gross=units(shares)*BigInt(Math.floor(price*1000000))/1000000n;
+    // Allow 10% of gross for taker fees, adverse rounding, and quote drift.
+    return gross*90n/100n >= cost+units('0.10');
+  }
+  async function ownSingleSide(state) {
+    if(!/^btc-updown-5m-\d+$/.test(state.market.slug) || !state.portfolio ||
+        units(state.portfolio.paired_shares)!==0n)return null;
+    const active=[];
+    for await(const page of client.listPositions({user:wallet,conditionId:state.conditionId,filterAmount:0}))
+      for(const position of page.items)if(units(position.currentSize)>0n)active.push(position);
+    if(active.length!==1)return null;
+    const p=active[0],tokenId=String(p.assetId);
+    const expected=tokenId===state.market.up_token?state.portfolio.residual_up:
+      tokenId===state.market.down_token?state.portfolio.residual_down:null;
+    if(p.wallet.toLowerCase()!==wallet || p.conditionId!==state.conditionId ||
+        expected===null || units(p.currentSize)!==units(expected))return null;
+    return {tokenId,shares:p.currentSize};
+  }
   async function startup(state) {
     await eligible();
     if(!/^btc-updown-5m-\d+$/.test(state.market.slug))throw new Error('Automatic trading supports BTC Up/Down 5m only.');
@@ -28,9 +50,16 @@ export function createSdkExchange({client,engine,eligible,signGuard=null,readBal
   return {
     startup,
     accountValue,
-    async liquidateOwnPositions(state,onResult=async()=>{}) {
+    async profitOpportunity(state) {
+      const position=await ownSingleSide(state);
+      if(!position)return false;
+      const price=await client.estimateMarketPrice({...position,side:OrderSide.SELL,orderType:OrderType.FOK});
+      return profitableExit(state,position.shares,price);
+    },
+    async liquidateOwnPositions(state,onResult=async()=>{},takeProfit=false) {
       await eligible();
       if(!/^btc-updown-5m-\d+$/.test(state.market.slug))throw new Error('Only BTC 5m inventory can be exited.');
+      if(takeProfit && !(await ownSingleSide(state)))return [];
       const maximum={
         [state.market.up_token]:units(state.portfolio.paired_shares)+units(state.portfolio.residual_up),
         [state.market.down_token]:units(state.portfolio.paired_shares)+units(state.portfolio.residual_down)
@@ -49,6 +78,7 @@ export function createSdkExchange({client,engine,eligible,signGuard=null,readBal
         const shares=position.currentSize;
         const price=await client.estimateMarketPrice({tokenId,side:OrderSide.SELL,shares,orderType:OrderType.FOK});
         if(!Number.isFinite(price) || price<=0 || price>=1)throw new Error('No executable exit price.');
+        if(takeProfit && !profitableExit(state,shares,price))return [];
         if(signGuard)signGuard.exit={tokenId,shares,minPrice:price};
         let result;
         try {

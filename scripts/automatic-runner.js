@@ -30,7 +30,7 @@ export async function runAutomatic({client,options,eligible,signGuard}) {
   // The child receives public settings only, never the private key or SDK credentials.
   child.stdin.end(JSON.stringify({...options,capital})+'\n');
   child.stderr.resume(); // Never echo transport diagnostics or sensitive payloads.
-  let controller,engine,stopping=false,floorTriggered=false,goalAnnounced=false,info;
+  let controller,engine,stopping=false,floorTriggered=false,profitTriggered=false,goalAnnounced=false,info;
   const stoppingSignal=()=>{stopping=true;};
   process.on('SIGINT',stoppingSignal);process.on('SIGTERM',stoppingSignal);
   try {
@@ -76,6 +76,7 @@ export async function runAutomatic({client,options,eligible,signGuard}) {
     console.log('Automatic session started. Maker-only, one market, maximum spend '+capital+', maximum loss '+options.maxLoss+'.');
     console.log('Recording: '+info.run+' | Ctrl+C stops new orders and requests cancellation of session orders.');
     const end=Date.now()+Number(options.seconds)*1000;
+    let nextProfitCheck=0;
     while(!stopping && !controller.halted && Date.now()<end && child.exitCode===null) {
       const account=await exchange.accountValue();
       if(account.totalUnits>=units('100') && !goalAnnounced){
@@ -87,6 +88,16 @@ export async function runAutomatic({client,options,eligible,signGuard}) {
         await controller.stop('account_value_floor');break;
       }
       await controller.step();
+      if(!controller.halted && Date.now()>=nextProfitCheck) {
+        nextProfitCheck=Date.now()+3000;
+        const state=await engine.state();
+        if(state.portfolio?.fills>0 && Date.now()/1000<state.market.end-8 &&
+            await exchange.profitOpportunity(state)) {
+          profitTriggered=true;
+          await controller.stop('take_profit');
+          break;
+        }
+      }
       if(controller.halted && (await exchange.accountValue()).totalUnits<=floorUnits)floorTriggered=true;
       if(!controller.halted)await new Promise(resolve=>setTimeout(resolve,500));
     }
@@ -117,6 +128,23 @@ export async function runAutomatic({client,options,eligible,signGuard}) {
         if(unresolved && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,500));
       } while(unresolved && Date.now()<deadline);
       if(unresolved)console.log('Final account fills are not fully reconciled. Check Polymarket trades before restarting; this journal may be incomplete.');
+      if(profitTriggered && (unresolved || failures.length))
+        console.log('Take-profit sale skipped because order cancellation or fills were not confirmed. Inspect account positions and open orders.');
+      if(profitTriggered && !unresolved && failures.length===0) {
+        try {
+          if(!/^runs[\\/]automatic-[a-f0-9]{12}$/.test(info.run))throw new Error('Invalid journal directory.');
+          const state=await engine.state();
+          const output=join(process.cwd(),info.run,'exit-attempts.jsonl');
+          const exits=await controller.exchange.liquidateOwnPositions(state,async record=>{
+            appendFileSync(output,JSON.stringify({time:new Date().toISOString(),reason:'take_profit',...record})+'\n');
+          },true);
+          console.log(exits.length===1 && exits[0].confirmed ?
+            'Take-profit sale settled for session-owned BTC shares.' :
+            'Profit quote was no longer executable; BTC shares remain in the account. Inspect positions.');
+        } catch {
+          console.log('Take-profit sale could not be confirmed. Inspect account positions and open orders immediately.');
+        }
+      }
       if(floorTriggered) {
         try {
           if(!/^runs[\\/]automatic-[a-f0-9]{12}$/.test(info.run))throw new Error('Invalid journal directory.');
