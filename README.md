@@ -151,6 +151,8 @@ For a first, capped BTC 5-minute session, use the one-command PowerShell launche
 
 The live test session caps total market spend and loss at $3, uses the $50 account-value floor, and stops after 90 seconds or market expiry. It may place **zero** orders if the strategy finds no acceptable signal. It does not make a forced test bet. The opening-price endpoint is part of Polymarket's public site rather than a documented trading API; if its response changes or is unavailable, the launcher refuses to trade. The launcher runs one market, not a continuous sequence.
 
+If wallet startup fails, use `.\scripts\wallet.ps1 -Action balance` first. It requests the key in the hidden local prompt, then prints the public signer, trading wallet, collateral balance and a safe diagnostic stage without placing an order. Check the account's open orders and positions before retrying a failed live session; an ambiguous submission may have reached the exchange even if the launcher lost its response.
+
 Run this from your own PowerShell after replacing the two placeholders with a current market slug and its official price to beat:
 
 ```powershell

@@ -41,6 +41,7 @@ if ($Action -eq 'cancel' -and -not $OrderId) { throw 'Provide -OrderId.' }
 $taskSecret = Read-Host 'Wallet private key (hidden)' -AsSecureString
 $taskPointer = [IntPtr]::Zero
 $taskProcess = $null
+$taskPlainKey = $null
 try {
     $taskPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($taskSecret)
     $taskInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -49,17 +50,32 @@ try {
     $taskInfo.WorkingDirectory = Split-Path $PSScriptRoot -Parent
     $taskInfo.UseShellExecute = $false
     $taskInfo.RedirectStandardInput = $true
+    $taskInfo.RedirectStandardOutput = $true
+    $taskInfo.RedirectStandardError = $true
     $taskInfo.CreateNoWindow = $true
     $taskProcess = New-Object System.Diagnostics.Process
     $taskProcess.StartInfo = $taskInfo
     [void]$taskProcess.Start()
     # Anonymous stdin pipe: no key in argv, environment, disk, or console output.
-    $taskProcess.StandardInput.WriteLine([Runtime.InteropServices.Marshal]::PtrToStringBSTR($taskPointer))
+    $taskPlainKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($taskPointer)
+    $taskProcess.StandardInput.WriteLine($taskPlainKey)
     $taskProcess.StandardInput.WriteLine(($taskOptions | ConvertTo-Json -Compress))
     $taskProcess.StandardInput.Close()
+    Write-Host 'Checking wallet and running the selected action. Public results will print when it exits.'
+    $taskOutput = $taskProcess.StandardOutput.ReadToEndAsync()
+    $taskErrors = $taskProcess.StandardError.ReadToEndAsync()
     $taskProcess.WaitForExit()
-    if ($taskProcess.ExitCode -ne 0) { throw 'Wallet command failed. See the public error above.' }
+    foreach ($taskMessage in @($taskOutput.GetAwaiter().GetResult(), $taskErrors.GetAwaiter().GetResult())) {
+        if ($taskMessage) {
+            # The CLI redacts caught exceptions. Also suppress an accidental
+            # verbatim key in any unexpected child-process output.
+            $taskMessage = $taskMessage.Replace($taskPlainKey, '[redacted]')
+            Write-Host $taskMessage.TrimEnd()
+        }
+    }
+    if ($taskProcess.ExitCode -ne 0) { throw 'Wallet command failed. Review the stage shown above; check Polymarket orders before retrying.' }
 } finally {
+    $taskPlainKey = $null
     if ($taskPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($taskPointer) }
     if ($taskProcess) { $taskProcess.Dispose() }
     $taskSecret.Dispose()

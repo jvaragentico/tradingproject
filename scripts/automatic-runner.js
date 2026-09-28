@@ -47,6 +47,10 @@ export async function runAutomatic({client,options,eligible,signGuard}) {
       fill:(local_id,f)=>request('/update',{kind:'execution_fill',local_id,fill_id:f.id,shares:f.shares,price:f.price,fee:f.fee,status:f.status})};
     engine.stop=()=>request('/update',{kind:'execution_stop'});
     const exchange=createSdkExchange({client,engine,eligible,signGuard,stopFloor:options.stopFloor ?? '50'});
+    const account=await exchange.accountValue();
+    const dollars=value=>(value/1000000n).toString()+'.'+(value%1000000n).toString().padStart(6,'0');
+    console.log('Account collateral $'+dollars(account.cashUnits)+', positions $'+dollars(account.positionUnits)+
+      ', total marked value $'+dollars(account.totalUnits)+'.');
     await exchange.startup(await engine.state());
     controller=new AutomaticController({engine,exchange});
     signGuard.check=async()=>{

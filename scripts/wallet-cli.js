@@ -10,7 +10,7 @@ import {runAutomatic} from './automatic-runner.js';
 
 // Read the key only from the launcher's anonymous stdin pipe. Never log SDK errors
 // verbatim: transports and signing errors may include payload or request details.
-let secret = '', options = {};
+let secret = '', options = {}, stage = 'input';
 try {
   const lines = [];
   for await (const line of createInterface({input:process.stdin,terminal:false})) {
@@ -21,6 +21,7 @@ try {
   if (!secret.startsWith('0x')) secret = '0x'+secret;
   if (!/^0x[0-9a-fA-F]{64}$/.test(secret)) throw new Error('Invalid key format.');
   options = JSON.parse(lines[1] || '{}');
+  stage = 'signer verification';
   const account = privateKeyToAccount(secret);
   lines.fill('');
   console.log('Signer address: '+account.address);
@@ -32,14 +33,16 @@ try {
     if (options.wallet && !isAddress(options.wallet)) throw new Error('Invalid trading wallet.');
     const json = async url => {const r=await fetch(url,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error('Service unavailable.');return r.json();};
     async function eligible() {const geo=await json('https://polymarket.com/api/geoblock');if(geo.blocked!==false)throw new Error('Trading is restricted at this location.');}
-    if (['buy','auto'].includes(options.action)) await eligible();
+    if (['buy','auto'].includes(options.action)) {stage='location eligibility';await eligible();}
     let review = null;
     const signGuard = {check:null};
     const adapter=privateKey(secret,{chain:polygon});
     const signer={...adapter,async signTypedData(payload){await signGuard.check?.();const signature=await adapter.signTypedData(payload);if(review)validateOrder(options,review);await signGuard.check?.();return signature;}};
+    stage='exchange client setup';
     const client=await createSecureClient({signer,wallet:options.wallet || account.address});
     console.log('Trading wallet: '+client.account.wallet);
     if(options.action === 'auto') {
+      stage='automatic session startup or execution';
       await runAutomatic({client,options,eligible,signGuard});
     } else if(options.action === 'balance') {
       const b=await fetchBalanceAllowance(client,{assetType:'COLLATERAL'});
@@ -62,8 +65,12 @@ try {
       if(!result.ok)process.exitCode=1;
     }
   }
-} catch {
+} catch (error) {
   // Intentionally redact exception details; never echo invalid key input.
-  console.error('Wallet action failed. Check key format, account wallet, funding, eligibility, market inputs and network connection.');
+  console.error('Wallet action failed during '+stage+'. Check key format, account wallet, funding, eligibility, market inputs and network connection.');
+  const publicErrors=new Set(['Signer mismatch.','Trading is restricted at this location.',
+    'Account value is at or below the stop floor.','Session capital exceeds available collateral.',
+    'Existing orders must be reconciled before starting.','Existing market inventory must be reconciled before starting.']);
+  if(publicErrors.has(error?.message))console.error(error.message);
   process.exitCode=1;
 } finally {secret='';}
